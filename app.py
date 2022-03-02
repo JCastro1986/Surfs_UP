@@ -1,41 +1,81 @@
-#mport the Flask dependency
-#from flask import Flask
+import datetime as dt
+import runpy
+import numpy as np
+import pandas as pd
 
-#Create a New Flask App Instance
-#app = Flask(__name__)
+import sqlalchemy
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func
 
-#Create Flask Routes
-#@app.route('/')
-#def hello_world():
-#    return 'Hello world'
+from flask import Flask, jsonify
 
-#Run a Flask App
-#export FLASK_APP=app.py
+engine = create_engine("sqlite:///hawaii.sqlite")
 
-#flask run
+Base = automap_base()
 
-# 1. import Flask
-from flask import Flask
+Base.prepare(engine, reflect=True)
 
-# 2. Create an app, being sure to pass __name__
+Measurement = Base.classes.measurement
+Station = Base.classes.station
+
+session = Session(engine)
+
 app = Flask(__name__)
 
-# 3. Define what to do when a user goes to the index route
 @app.route("/")
-def home():
-    print("Server received request for 'Home' page...")
-    return "Welcome to my 'Home' page!"
+def welcome():
+    return(
+    '''
+    Welcome to the Climate Analysis API!
+    Available Routes:
+    /api/v1.0/precipitation
+    /api/v1.0/stations
+    /api/v1.0/tobs
+    /api/v1.0/temp/start/end
+    ''')
+
+@app.route("/api/v1.0/precipitation")
+def precipitation():
+   prev_year = dt.date(2017, 8, 23) - dt.timedelta(days=365)
+   precipitation = session.query(Measurement.date, Measurement.prcp).\
+    filter(Measurement.date >= prev_year).all()
+   precip = {date: prcp for date, prcp in precipitation}
+   return jsonify(precip)
+
+@app.route("/api/v1.0/stations")
+def stations():
+    results = session.query(Station.station).all()
+    stations = list(np.ravel(results))
+    return jsonify(stations=stations)
+
+@app.route("/api/v1.0/tobs")
+def temp_monthly():
+    prev_year = dt.date(2017, 8, 23) - dt.timedelta(days=365)
+    results = session.query(Measurement.tobs).\
+      filter(Measurement.station == 'USC00519281').\
+      filter(Measurement.date >= prev_year).all()
+    temps = list(np.ravel(results))
+    return jsonify(temps=temps)
+
+@app.route("/api/v1.0/temp/<start>")
+@app.route("/api/v1.0/temp/<start>/<end>")
+def stats(start=None, end=None):
+    sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+
+    if not end:
+        results = session.query(*sel).\
+            filter(Measurement.date >= start).all()
+        temps = list(np.ravel(results))
+        return jsonify(temps)
+
+    results = session.query(*sel).\
+        filter(Measurement.date >= start).\
+        filter(Measurement.date <= end).all()
+    temps = list(np.ravel(results))
+    return jsonify(temps)
 
 
-# 4. Define what to do when a user goes to the /about route
-@app.route("/about")
-def about():
-    print("Server received request for 'About' page...")
-    return "Welcome to my 'About' page!"
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
-
+#flask run
 
 
